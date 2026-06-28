@@ -126,3 +126,23 @@ Appeal: creator POSTs to `/appeal` with their reasoning, status flips to `under_
 **M4:** Feed Detection Signals (both) + Uncertainty Representation + diagram. Ask for `run_stylometric_signal()` and `compute_confidence()`. Verify with the 4 test inputs from the project PDF. Scores should spread across all three bands.
 
 **M5:** Feed label variants + Appeals Workflow + diagram. Ask for `generate_label()`, `POST /appeal`, Flask-Limiter on `/submit`. Verify all 3 labels are reachable, appeals update status, rate limit returns 429 after 10 rapid hits.
+
+## Stretch Features (M7)
+
+### Ensemble Detection (Signal 3)
+
+Signal 3 is burstiness/repetition heuristics. It checks bigram repetition and word frequency skew. AI text repeats structural patterns more than casual human writing.
+
+Logged on every submission as `burstiness_score`. Ensemble weighting (when `use_ensemble=True`): `0.50*llm + 0.30*stylometric + 0.20*burstiness`. Default `/submit` uses the 2-signal 60/40 formula; burstiness is recorded for audit either way.
+
+### Provenance Certificate
+
+`POST /verify` with `creator_id` + `sample_text`. If the sample scores `likely_human` with confidence <= 0.25, the creator gets a verified badge. Future `/submit` responses include `creator_badge: "verified_human"` and the label appends " · Verified Human Creator".
+
+### Analytics Dashboard
+
+`GET /dashboard` shows detection breakdown (%), appeal rate (%), and average confidence. Data comes from the SQLite audit log.
+
+### Multi-Modal Support
+
+`/submit` accepts optional `content_type` (`text` or `metadata`) plus a `metadata` object (title, tags, author_bio). Metadata gets concatenated and run through the same pipeline with adjusted scoring weights.
