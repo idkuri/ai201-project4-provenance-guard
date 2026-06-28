@@ -5,36 +5,183 @@
   <title>Provenance Guard Dashboard</title>
   <style>
     body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.4rem; }
+    h1, h2 { font-size: 1.4rem; }
+    h2 { margin-top: 2rem; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; }
     .value { font-size: 1.8rem; font-weight: bold; }
+    .submit-panel { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+    label { display: block; margin-bottom: 0.75rem; font-weight: 600; }
+    input[type="text"], textarea {
+      display: block;
+      width: 100%;
+      margin-top: 0.35rem;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font: inherit;
+      box-sizing: border-box;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    button {
+      margin-top: 0.5rem;
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: 6px;
+      background: #1a1a1a;
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .error { color: #b00020; margin-top: 0.75rem; }
+    .result-panel {
+      border: 1px solid #2e7d32;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 1rem;
+      background: #f1f8f4;
+    }
+    .result-panel h3 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+    .result-panel dl { margin: 0; display: grid; grid-template-columns: 8rem 1fr; gap: 0.35rem 1rem; }
+    .result-panel dt { font-weight: 600; }
+    .result-panel dd { margin: 0; }
+    .result-label { margin-top: 0.75rem; line-height: 1.5; }
+    .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; text-transform: capitalize; }
+    .badge-likely_ai { background: #ffebee; color: #b71c1c; }
+    .badge-likely_human { background: #e8f5e9; color: #1b5e20; }
+    .badge-uncertain { background: #fff8e1; color: #f57f17; }
   </style>
 </head>
 <body>
   <h1>Provenance Guard Analytics</h1>
-  <p>Total submissions: {{ stats.total_submissions }}</p>
+
+  <h2>Submit Content</h2>
+  <form id="submit-form" class="submit-panel" enctype="multipart/form-data">
+    <label>
+      Creator ID
+      <input type="text" name="creator_id" required placeholder="e.g. alice">
+    </label>
+    <label>
+      Text
+      <textarea name="text" placeholder="Paste or write the content to classify..."></textarea>
+    </label>
+    <label>
+      Image (optional)
+      <input type="file" name="image" accept="image/*">
+    </label>
+    <button type="submit" id="submit-btn">Submit for classification</button>
+    <p id="submit-error" class="error" hidden></p>
+  </form>
+
+  <div id="result-panel" class="result-panel" hidden>
+    <h3>Classification Result</h3>
+    <dl>
+      <dt>Attribution</dt>
+      <dd><span id="result-attribution" class="badge"></span></dd>
+      <dt>Confidence</dt>
+      <dd id="result-confidence"></dd>
+      <dt>Content ID</dt>
+      <dd id="result-content-id" style="font-family: monospace; font-size: 0.85rem;"></dd>
+      <dt>Creator badge</dt>
+      <dd id="result-badge">—</dd>
+    </dl>
+    <p id="result-label" class="result-label"></p>
+  </div>
+
+  <h2>Analytics</h2>
+  <p>Total submissions: <span id="stat-total">{{ stats.total_submissions }}</span></p>
   <div class="grid">
     <div class="card">
       <div>Likely AI</div>
-      <div class="value">{{ stats.likely_ai_pct }}%</div>
+      <div class="value"><span id="stat-likely-ai">{{ stats.likely_ai_pct }}</span>%</div>
     </div>
     <div class="card">
       <div>Likely Human</div>
-      <div class="value">{{ stats.likely_human_pct }}%</div>
+      <div class="value"><span id="stat-likely-human">{{ stats.likely_human_pct }}</span>%</div>
     </div>
     <div class="card">
       <div>Uncertain</div>
-      <div class="value">{{ stats.uncertain_pct }}%</div>
+      <div class="value"><span id="stat-uncertain">{{ stats.uncertain_pct }}</span>%</div>
     </div>
     <div class="card">
       <div>Appeal Rate</div>
-      <div class="value">{{ stats.appeal_rate_pct }}%</div>
+      <div class="value"><span id="stat-appeal-rate">{{ stats.appeal_rate_pct }}</span>%</div>
     </div>
     <div class="card">
       <div>Avg Confidence</div>
-      <div class="value">{{ stats.avg_confidence }}</div>
+      <div class="value" id="stat-avg-confidence">{{ stats.avg_confidence }}</div>
     </div>
   </div>
+
+  <script>
+    const form = document.getElementById("submit-form");
+    const submitBtn = document.getElementById("submit-btn");
+    const errorEl = document.getElementById("submit-error");
+    const resultPanel = document.getElementById("result-panel");
+
+    function showResult(data) {
+      const attributionEl = document.getElementById("result-attribution");
+      attributionEl.textContent = data.attribution.replace("_", " ");
+      attributionEl.className = "badge badge-" + data.attribution;
+      document.getElementById("result-confidence").textContent = data.confidence;
+      document.getElementById("result-content-id").textContent = data.content_id;
+      document.getElementById("result-badge").textContent = data.creator_badge || "—";
+      document.getElementById("result-label").textContent = data.label;
+      resultPanel.hidden = false;
+      resultPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    async function refreshStats() {
+      const response = await fetch("/stats");
+      if (!response.ok) return;
+      const stats = await response.json();
+      document.getElementById("stat-total").textContent = stats.total_submissions;
+      document.getElementById("stat-likely-ai").textContent = stats.likely_ai_pct;
+      document.getElementById("stat-likely-human").textContent = stats.likely_human_pct;
+      document.getElementById("stat-uncertain").textContent = stats.uncertain_pct;
+      document.getElementById("stat-appeal-rate").textContent = stats.appeal_rate_pct;
+      document.getElementById("stat-avg-confidence").textContent = stats.avg_confidence;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+      resultPanel.hidden = true;
+
+      const text = form.text.value.trim();
+      const image = form.image.files[0];
+      if (!text && !image) {
+        errorEl.textContent = "Please provide text, an image, or both.";
+        errorEl.hidden = false;
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+
+      try {
+        const response = await fetch("/submit", {
+          method: "POST",
+          body: new FormData(form),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "Submission failed.");
+        }
+        showResult(data);
+        await refreshStats();
+        form.text.value = "";
+        form.image.value = "";
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.hidden = false;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit for classification";
+      }
+    });
+  </script>
 </body>
 </html>

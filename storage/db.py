@@ -42,6 +42,11 @@ def init_db():
             )
             """
         )
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(audit_log)").fetchall()
+        }
+        if "image_path" not in columns:
+            conn.execute("ALTER TABLE audit_log ADD COLUMN image_path TEXT")
         conn.commit()
 
 
@@ -53,8 +58,9 @@ def write_audit_entry(entry: dict):
             INSERT INTO audit_log (
                 content_id, creator_id, timestamp, attribution, confidence,
                 llm_score, stylometric_score, burstiness_score, status,
-                appeal_reasoning, appeal_timestamp, content_type, label
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                appeal_reasoning, appeal_timestamp, content_type, label,
+                image_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(content_id) DO UPDATE SET
                 status = excluded.status,
                 appeal_reasoning = excluded.appeal_reasoning,
@@ -74,6 +80,7 @@ def write_audit_entry(entry: dict):
                 entry.get("appeal_timestamp"),
                 entry.get("content_type", "text"),
                 entry.get("label"),
+                entry.get("image_path"),
             ),
         )
         conn.commit()

@@ -127,6 +127,8 @@ Appeal: creator POSTs to `/appeal` with their reasoning, status flips to `under_
 
 **M5:** Feed label variants + Appeals Workflow + diagram. Ask for `generate_label()`, `POST /appeal`, Flask-Limiter on `/submit`. Verify all 3 labels are reachable, appeals update status, rate limit returns 429 after 10 rapid hits.
 
+**M7 (Demo UI):** The API had no browser UI for submissions — only curl/Postman. Ask the AI to generate an HTML test form in `templates/dashboard.html` with Creator ID, text area, optional image upload, and a submit button. The form should `POST` to `/submit` via `fetch` + `FormData`, then reload the page so analytics update. Also ask it to extend `app.py` to accept multipart form data and save uploaded images to `storage/uploads/`. Verify by opening `GET /dashboard`, submitting a few contrasting texts (casual human vs polished AI), and confirming totals change after reload. Use this UI for demo videos instead of terminal curl.
+
 ## Stretch Features (M7)
 
 ### Ensemble Detection (Signal 3)
@@ -141,7 +143,7 @@ Logged on every submission as `burstiness_score`. Ensemble weighting (when `use_
 
 ### Analytics Dashboard
 
-`GET /dashboard` shows detection breakdown (%), appeal rate (%), and average confidence. Data comes from the SQLite audit log.
+`GET /dashboard` shows detection breakdown (%), appeal rate (%), and average confidence. Data comes from the SQLite audit log. Includes a browser submission form (see AI Tool Plan M7 Demo UI) for testing without curl.
 
 ### Multi-Modal Support
 
