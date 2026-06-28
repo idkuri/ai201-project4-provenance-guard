@@ -105,19 +105,29 @@ What a reviewer sees in `GET /log`: original attribution, confidence, both signa
                                                                   |
                                     [SQLite: status -> under_review]
                                     [Audit Log: appeal + original decision]
+
+[Creator] --POST /verify {creator_id, sample_text}--> [POST /verify]
+                              |
+                    [SQLite: verified_creators table]
+                              |
+              Future /submit responses include creator_badge on content
 ```
 
 Submission: text hits `/submit`, rate limiter checks it, both signals score it, scoring combines them, label generator picks the text, everything gets logged, JSON goes back.
 
 Appeal: creator POSTs to `/appeal` with their reasoning, status flips to `under_review`, appeal gets logged next to the original call. Reviewer checks `GET /log`.
 
+Verify: creator POSTs a writing sample to `/verify`. If it scores likely human with confidence <= 0.25, the creator ID is stored as verified. Future `/submit` responses add `creator_badge` and a label suffix. Verification is identity-level; each post is still classified on its own.
+
 ## API Contract
 
 | Endpoint | Method | Body | Response |
 |----------|--------|------|----------|
-| `/submit` | POST | `{ text, creator_id }` | `{ content_id, attribution, confidence, label }` |
+| `/submit` | POST | `{ text, creator_id }` | `{ content_id, attribution, confidence, label, creator_badge }` |
 | `/appeal` | POST | `{ content_id, creator_id, creator_reasoning }` | `{ message, content_id, status }` |
+| `/verify` | POST | `{ creator_id, sample_text }` | `{ verified_human, creator_id, message }` |
 | `/log` | GET | none | `{ entries: [...] }` |
+| `/stats` | GET | none | dashboard analytics JSON |
 
 ## AI Tool Plan
 
@@ -127,7 +137,7 @@ Appeal: creator POSTs to `/appeal` with their reasoning, status flips to `under_
 
 **M5:** Feed label variants + Appeals Workflow + diagram. Ask for `generate_label()`, `POST /appeal`, Flask-Limiter on `/submit`. Verify all 3 labels are reachable, appeals update status, rate limit returns 429 after 10 rapid hits.
 
-**M7 (Demo UI):** The API had no browser UI for submissions — only curl/Postman. Ask the AI to generate an HTML test form in `templates/dashboard.html` with Creator ID, text area, and a submit button. The form should `POST` to `/submit` via `fetch` + `FormData`, show the classification result, and refresh analytics. Verify by opening `GET /dashboard`, submitting a few contrasting texts (casual human vs polished AI), and confirming totals update. Use this UI for demo videos instead of terminal curl.
+**M7 (Demo UI):** The API had no browser UI. Ask the AI to build `templates/dashboard.html` with side-by-side submit and appeal forms, a verify modal (`POST /verify`), JSON payload/response display, verified checkmark, and live analytics via `GET /stats`. Verify by submitting contrasting texts, appealing one result, verifying a creator, and confirming analytics update.
 
 ## Stretch Features (M7)
 
@@ -141,9 +151,11 @@ Logged on every submission as `burstiness_score`. Ensemble weighting (when `use_
 
 `POST /verify` with `creator_id` + `sample_text`. If the sample scores `likely_human` with confidence <= 0.25, the creator gets a verified badge. Future `/submit` responses include `creator_badge: "verified_human"` and the label appends " · Verified Human Creator".
 
+Important: verification is about the **creator's identity**, not the current post. A verified creator can still submit content that classifies as likely AI. The badge and attribution are independent.
+
 ### Analytics Dashboard
 
-`GET /dashboard` shows detection breakdown (%), appeal rate (%), and average confidence. Data comes from the SQLite audit log. Includes a browser submission form (see AI Tool Plan M7 Demo UI) for testing without curl.
+`GET /dashboard` shows detection breakdown (%), appeal rate (%), and average confidence. Side-by-side submit and appeal forms, classification result with request/response JSON, verify creator modal, and live stats refresh via `GET /stats`.
 
 ### Multi-Modal Support
 

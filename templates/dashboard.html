@@ -4,13 +4,17 @@
   <meta charset="UTF-8">
   <title>Provenance Guard Dashboard</title>
   <style>
-    body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    h1, h2 { font-size: 1.4rem; }
-    h2 { margin-top: 2rem; }
+    body { font-family: sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    h1, h2, h3 { font-size: 1.4rem; }
+    h2 { margin-top: 2rem; margin-bottom: 0.75rem; }
+    h3 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 2rem; }
+    .section-header h2 { margin: 0; }
+    .forms-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; }
     .value { font-size: 1.8rem; font-weight: bold; }
-    .submit-panel { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+    .panel { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; }
     label { display: block; margin-bottom: 0.75rem; font-weight: 600; }
     input[type="text"], textarea {
       display: block;
@@ -34,7 +38,10 @@
       cursor: pointer;
     }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
+    button.secondary { background: #fff; color: #1a1a1a; border: 1px solid #ccc; }
     .error { color: #b00020; margin-top: 0.75rem; }
+    .success { color: #2e7d32; margin-top: 0.75rem; }
+    .hint { color: #666; font-size: 0.9rem; margin: 0 0 0.75rem; }
     .result-panel {
       border: 1px solid #2e7d32;
       border-radius: 8px;
@@ -42,7 +49,6 @@
       margin-top: 1rem;
       background: #f1f8f4;
     }
-    .result-panel h3 { margin: 0 0 0.75rem; font-size: 1.1rem; }
     .result-panel dl { margin: 0; display: grid; grid-template-columns: 8rem 1fr; gap: 0.35rem 1rem; }
     .result-panel dt { font-weight: 600; }
     .result-panel dd { margin: 0; }
@@ -51,55 +57,178 @@
     .badge-likely_ai { background: #ffebee; color: #b71c1c; }
     .badge-likely_human { background: #e8f5e9; color: #1b5e20; }
     .badge-uncertain { background: #fff8e1; color: #f57f17; }
-    .appeal-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ccc; }
-    .appeal-panel textarea { min-height: 80px; }
-    .success { color: #2e7d32; margin-top: 0.75rem; }
-    button.secondary { background: #fff; color: #1a1a1a; border: 1px solid #ccc; }
+    .exchange { margin-top: 0.75rem; }
+    .exchange h4 { margin: 0 0 0.35rem; font-size: 0.9rem; color: #555; }
+    .json-block {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .verified-check {
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      color: #1b5e20;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: #e8f5e9;
+      border: 1px solid #a5d6a7;
+      border-radius: 6px;
+      width: fit-content;
+    }
+    .verified-check.visible { display: inline-flex; }
+    .verified-check .icon { font-size: 1.1rem; line-height: 1; }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 1.25rem;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .modal-header h3 { margin: 0; }
+    .modal-close {
+      margin: 0;
+      padding: 0.25rem 0.5rem;
+      background: transparent;
+      color: #333;
+      border: none;
+      font-size: 1.4rem;
+      line-height: 1;
+    }
+    @media (max-width: 720px) {
+      .forms-row { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <h1>Provenance Guard Analytics</h1>
 
-  <h2>Submit Content</h2>
-  <form id="submit-form" class="submit-panel">
-    <label>
-      Creator ID
-      <input type="text" name="creator_id" required placeholder="e.g. alice">
-    </label>
-    <label>
-      Text
-      <textarea name="text" required placeholder="Paste or write the content to classify..."></textarea>
-    </label>
-    <button type="submit" id="submit-btn">Submit for classification</button>
-    <p id="submit-error" class="error" hidden></p>
-  </form>
+  <div class="section-header">
+    <h2>Content</h2>
+    <button type="button" id="open-verify-modal" class="secondary">Verify creator</button>
+  </div>
+
+  <div class="forms-row">
+    <form id="submit-form" class="panel">
+      <h3>Submit content</h3>
+      <label>
+        Creator ID
+        <input type="text" name="creator_id" required placeholder="e.g. alice">
+      </label>
+      <label>
+        Text
+        <textarea name="text" required placeholder="Paste or write the content to classify..."></textarea>
+      </label>
+      <button type="submit" id="submit-btn">Submit for classification</button>
+      <p id="submit-error" class="error" hidden></p>
+    </form>
+
+    <form id="appeal-form" class="panel">
+      <h3>Appeal result</h3>
+      <p id="appeal-hint" class="hint">Submit content first, then appeal the latest result here.</p>
+      <label>
+        Your reasoning
+        <textarea id="appeal-reasoning" placeholder="Explain why this content is human-written..." disabled></textarea>
+      </label>
+      <button type="submit" id="appeal-btn" disabled>Submit appeal</button>
+      <p id="appeal-error" class="error" hidden></p>
+      <p id="appeal-success" class="success" hidden></p>
+    </form>
+  </div>
 
   <div id="result-panel" class="result-panel" hidden>
-    <h3>Classification Result</h3>
-    <dl>
+    <div id="submit-verified-check" class="verified-check">
+      <span class="icon">✓</span>
+      <span>Human verified</span>
+    </div>
+    <h3>Classification result</h3>
+    <div class="exchange">
+      <h4>Request payload</h4>
+      <pre id="submit-request" class="json-block"></pre>
+    </div>
+    <div class="exchange">
+      <h4>Response</h4>
+      <pre id="submit-response" class="json-block"></pre>
+    </div>
+    <dl style="margin-top: 0.75rem;">
       <dt>Attribution</dt>
       <dd><span id="result-attribution" class="badge"></span></dd>
       <dt>Confidence</dt>
       <dd id="result-confidence"></dd>
       <dt>Content ID</dt>
       <dd id="result-content-id" style="font-family: monospace; font-size: 0.85rem;"></dd>
-      <dt>Creator badge</dt>
-      <dd id="result-badge">—</dd>
     </dl>
     <p id="result-label" class="result-label"></p>
+    <div id="appeal-exchange" class="exchange" hidden>
+      <h4>Appeal request payload</h4>
+      <pre id="appeal-request" class="json-block"></pre>
+      <h4>Appeal response</h4>
+      <pre id="appeal-response" class="json-block"></pre>
+    </div>
+  </div>
 
-    <div id="appeal-panel" class="appeal-panel">
-      <h3>Appeal this result</h3>
-      <p>Contest the classification if you believe it is wrong.</p>
-      <form id="appeal-form">
+  <div id="verify-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="verify-modal-title">
+      <div class="modal-header">
+        <h3 id="verify-modal-title">Verify creator</h3>
+        <button type="button" class="modal-close" id="close-verify-modal" aria-label="Close">&times;</button>
+      </div>
+      <p class="hint">One-time check with a writing sample. Verified creators get a badge on future submissions.</p>
+      <form id="verify-form">
         <label>
-          Your reasoning
-          <textarea id="appeal-reasoning" required placeholder="Explain why this content is human-written..."></textarea>
+          Creator ID
+          <input type="text" name="creator_id" required placeholder="e.g. demo-human">
         </label>
-        <button type="submit" id="appeal-btn">Submit appeal</button>
-        <p id="appeal-error" class="error" hidden></p>
-        <p id="appeal-success" class="success" hidden></p>
+        <label>
+          Writing sample
+          <textarea name="sample_text" required placeholder="Paste a casual writing sample..."></textarea>
+        </label>
+        <button type="submit" id="verify-btn">Verify human creator</button>
+        <p id="verify-error" class="error" hidden></p>
       </form>
+      <div id="verify-result" hidden>
+        <div id="verify-check" class="verified-check">
+          <span class="icon">✓</span>
+          <span>Human verified</span>
+        </div>
+        <div class="exchange">
+          <h4>Request payload</h4>
+          <pre id="verify-request" class="json-block"></pre>
+        </div>
+        <div class="exchange">
+          <h4>Response</h4>
+          <pre id="verify-response" class="json-block"></pre>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -130,29 +259,78 @@
 
   <script>
     const form = document.getElementById("submit-form");
+    const verifyForm = document.getElementById("verify-form");
+    const verifyModal = document.getElementById("verify-modal");
+    const openVerifyModal = document.getElementById("open-verify-modal");
+    const closeVerifyModal = document.getElementById("close-verify-modal");
     const submitBtn = document.getElementById("submit-btn");
+    const verifyBtn = document.getElementById("verify-btn");
     const errorEl = document.getElementById("submit-error");
+    const verifyErrorEl = document.getElementById("verify-error");
     const resultPanel = document.getElementById("result-panel");
+    const verifyResult = document.getElementById("verify-result");
     const appealForm = document.getElementById("appeal-form");
     const appealBtn = document.getElementById("appeal-btn");
+    const appealReasoning = document.getElementById("appeal-reasoning");
+    const appealHint = document.getElementById("appeal-hint");
     const appealErrorEl = document.getElementById("appeal-error");
     const appealSuccessEl = document.getElementById("appeal-success");
     let lastSubmission = null;
 
-    function showResult(data, creatorId) {
-      lastSubmission = { content_id: data.content_id, creator_id: creatorId };
+    function formatJson(value) {
+      return JSON.stringify(value, null, 2);
+    }
+
+    function setVerifiedCheck(element, show) {
+      element.classList.toggle("visible", show);
+    }
+
+    function openModal() {
+      const submitCreatorId = form.creator_id.value.trim();
+      if (submitCreatorId && !verifyForm.creator_id.value.trim()) {
+        verifyForm.creator_id.value = submitCreatorId;
+      }
+      verifyModal.classList.add("open");
+      verifyModal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeModal() {
+      verifyModal.classList.remove("open");
+      verifyModal.setAttribute("aria-hidden", "true");
+    }
+
+    function enableAppeal(submission) {
+      lastSubmission = submission;
+      appealReasoning.disabled = false;
+      appealReasoning.required = true;
+      appealBtn.disabled = false;
+      appealHint.textContent = "Appealing content ID: " + submission.content_id;
+      appealReasoning.value = "";
+      appealErrorEl.hidden = true;
+      appealSuccessEl.hidden = true;
+      appealBtn.textContent = "Submit appeal";
+      document.getElementById("appeal-exchange").hidden = true;
+    }
+
+    function showResult(data, requestPayload) {
+      enableAppeal({
+        content_id: data.content_id,
+        creator_id: requestPayload.creator_id,
+      });
+
+      document.getElementById("submit-request").textContent = formatJson(requestPayload);
+      document.getElementById("submit-response").textContent = formatJson(data);
+      setVerifiedCheck(
+        document.getElementById("submit-verified-check"),
+        data.creator_badge === "verified_human"
+      );
+
       const attributionEl = document.getElementById("result-attribution");
       attributionEl.textContent = data.attribution.replace("_", " ");
       attributionEl.className = "badge badge-" + data.attribution;
       document.getElementById("result-confidence").textContent = data.confidence;
       document.getElementById("result-content-id").textContent = data.content_id;
-      document.getElementById("result-badge").textContent = data.creator_badge || "—";
       document.getElementById("result-label").textContent = data.label;
-      document.getElementById("appeal-reasoning").value = "";
-      appealErrorEl.hidden = true;
-      appealSuccessEl.hidden = true;
-      appealBtn.disabled = false;
-      appealBtn.textContent = "Submit appeal";
       resultPanel.hidden = false;
       resultPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -169,14 +347,60 @@
       document.getElementById("stat-avg-confidence").textContent = stats.avg_confidence;
     }
 
+    openVerifyModal.addEventListener("click", openModal);
+    closeVerifyModal.addEventListener("click", closeModal);
+    verifyModal.addEventListener("click", (event) => {
+      if (event.target === verifyModal) closeModal();
+    });
+
+    verifyForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      verifyErrorEl.hidden = true;
+      verifyResult.hidden = true;
+      setVerifiedCheck(document.getElementById("verify-check"), false);
+
+      const payload = {
+        creator_id: verifyForm.creator_id.value.trim(),
+        sample_text: verifyForm.sample_text.value.trim(),
+      };
+
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = "Verifying...";
+
+      try {
+        const response = await fetch("/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "Verification failed.");
+        }
+
+        document.getElementById("verify-request").textContent = formatJson(payload);
+        document.getElementById("verify-response").textContent = formatJson(data);
+        setVerifiedCheck(document.getElementById("verify-check"), data.verified_human === true);
+        verifyResult.hidden = false;
+      } catch (err) {
+        verifyErrorEl.textContent = err.message;
+        verifyErrorEl.hidden = false;
+      } finally {
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = "Verify human creator";
+      }
+    });
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       errorEl.hidden = true;
-      errorEl.textContent = "";
-      resultPanel.hidden = true;
 
-      const text = form.text.value.trim();
-      if (!text) {
+      const requestPayload = {
+        creator_id: form.creator_id.value.trim(),
+        text: form.text.value.trim(),
+      };
+
+      if (!requestPayload.text) {
         errorEl.textContent = "Please provide text to classify.";
         errorEl.hidden = false;
         return;
@@ -186,15 +410,19 @@
       submitBtn.textContent = "Submitting...";
 
       try {
+        const body = new FormData();
+        body.append("creator_id", requestPayload.creator_id);
+        body.append("text", requestPayload.text);
+
         const response = await fetch("/submit", {
           method: "POST",
-          body: new FormData(form),
+          body,
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(data.error || "Submission failed.");
         }
-        showResult(data, form.creator_id.value.trim());
+        showResult(data, requestPayload);
         await refreshStats();
         form.text.value = "";
       } catch (err) {
@@ -212,12 +440,18 @@
 
       appealErrorEl.hidden = true;
       appealSuccessEl.hidden = true;
-      const creator_reasoning = document.getElementById("appeal-reasoning").value.trim();
+      const creator_reasoning = appealReasoning.value.trim();
       if (!creator_reasoning) {
         appealErrorEl.textContent = "Please explain why you are appealing.";
         appealErrorEl.hidden = false;
         return;
       }
+
+      const appealPayload = {
+        content_id: lastSubmission.content_id,
+        creator_id: lastSubmission.creator_id,
+        creator_reasoning,
+      };
 
       appealBtn.disabled = true;
       appealBtn.textContent = "Submitting appeal...";
@@ -226,16 +460,17 @@
         const response = await fetch("/appeal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content_id: lastSubmission.content_id,
-            creator_id: lastSubmission.creator_id,
-            creator_reasoning,
-          }),
+          body: JSON.stringify(appealPayload),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(data.error || "Appeal failed.");
         }
+
+        document.getElementById("appeal-request").textContent = formatJson(appealPayload);
+        document.getElementById("appeal-response").textContent = formatJson(data);
+        document.getElementById("appeal-exchange").hidden = false;
+
         appealSuccessEl.textContent = "Appeal received. Status is now under review.";
         appealSuccessEl.hidden = false;
         appealBtn.textContent = "Appeal submitted";
