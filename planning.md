@@ -127,7 +127,7 @@ Appeal: creator POSTs to `/appeal` with their reasoning, status flips to `under_
 
 **M5:** Feed label variants + Appeals Workflow + diagram. Ask for `generate_label()`, `POST /appeal`, Flask-Limiter on `/submit`. Verify all 3 labels are reachable, appeals update status, rate limit returns 429 after 10 rapid hits.
 
-**M7 (Demo UI):** The API had no browser UI for submissions — only curl/Postman. Ask the AI to generate an HTML test form in `templates/dashboard.html` with Creator ID, text area, optional image upload, and a submit button. The form should `POST` to `/submit` via `fetch` + `FormData`, then reload the page so analytics update. Also ask it to extend `app.py` to accept multipart form data and save uploaded images to `storage/uploads/`. Verify by opening `GET /dashboard`, submitting a few contrasting texts (casual human vs polished AI), and confirming totals change after reload. Use this UI for demo videos instead of terminal curl.
+**M7 (Demo UI):** The API had no browser UI for submissions — only curl/Postman. Ask the AI to generate an HTML test form in `templates/dashboard.html` with Creator ID, text area, and a submit button. The form should `POST` to `/submit` via `fetch` + `FormData`, show the classification result, and refresh analytics. Verify by opening `GET /dashboard`, submitting a few contrasting texts (casual human vs polished AI), and confirming totals update. Use this UI for demo videos instead of terminal curl.
 
 ## Stretch Features (M7)
 

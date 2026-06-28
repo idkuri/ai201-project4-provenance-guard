@@ -51,24 +51,24 @@
     .badge-likely_ai { background: #ffebee; color: #b71c1c; }
     .badge-likely_human { background: #e8f5e9; color: #1b5e20; }
     .badge-uncertain { background: #fff8e1; color: #f57f17; }
+    .appeal-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ccc; }
+    .appeal-panel textarea { min-height: 80px; }
+    .success { color: #2e7d32; margin-top: 0.75rem; }
+    button.secondary { background: #fff; color: #1a1a1a; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
   <h1>Provenance Guard Analytics</h1>
 
   <h2>Submit Content</h2>
-  <form id="submit-form" class="submit-panel" enctype="multipart/form-data">
+  <form id="submit-form" class="submit-panel">
     <label>
       Creator ID
       <input type="text" name="creator_id" required placeholder="e.g. alice">
     </label>
     <label>
       Text
-      <textarea name="text" placeholder="Paste or write the content to classify..."></textarea>
-    </label>
-    <label>
-      Image (optional)
-      <input type="file" name="image" accept="image/*">
+      <textarea name="text" required placeholder="Paste or write the content to classify..."></textarea>
     </label>
     <button type="submit" id="submit-btn">Submit for classification</button>
     <p id="submit-error" class="error" hidden></p>
@@ -87,6 +87,20 @@
       <dd id="result-badge">—</dd>
     </dl>
     <p id="result-label" class="result-label"></p>
+
+    <div id="appeal-panel" class="appeal-panel">
+      <h3>Appeal this result</h3>
+      <p>Contest the classification if you believe it is wrong.</p>
+      <form id="appeal-form">
+        <label>
+          Your reasoning
+          <textarea id="appeal-reasoning" required placeholder="Explain why this content is human-written..."></textarea>
+        </label>
+        <button type="submit" id="appeal-btn">Submit appeal</button>
+        <p id="appeal-error" class="error" hidden></p>
+        <p id="appeal-success" class="success" hidden></p>
+      </form>
+    </div>
   </div>
 
   <h2>Analytics</h2>
@@ -119,8 +133,14 @@
     const submitBtn = document.getElementById("submit-btn");
     const errorEl = document.getElementById("submit-error");
     const resultPanel = document.getElementById("result-panel");
+    const appealForm = document.getElementById("appeal-form");
+    const appealBtn = document.getElementById("appeal-btn");
+    const appealErrorEl = document.getElementById("appeal-error");
+    const appealSuccessEl = document.getElementById("appeal-success");
+    let lastSubmission = null;
 
-    function showResult(data) {
+    function showResult(data, creatorId) {
+      lastSubmission = { content_id: data.content_id, creator_id: creatorId };
       const attributionEl = document.getElementById("result-attribution");
       attributionEl.textContent = data.attribution.replace("_", " ");
       attributionEl.className = "badge badge-" + data.attribution;
@@ -128,6 +148,11 @@
       document.getElementById("result-content-id").textContent = data.content_id;
       document.getElementById("result-badge").textContent = data.creator_badge || "—";
       document.getElementById("result-label").textContent = data.label;
+      document.getElementById("appeal-reasoning").value = "";
+      appealErrorEl.hidden = true;
+      appealSuccessEl.hidden = true;
+      appealBtn.disabled = false;
+      appealBtn.textContent = "Submit appeal";
       resultPanel.hidden = false;
       resultPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -151,9 +176,8 @@
       resultPanel.hidden = true;
 
       const text = form.text.value.trim();
-      const image = form.image.files[0];
-      if (!text && !image) {
-        errorEl.textContent = "Please provide text, an image, or both.";
+      if (!text) {
+        errorEl.textContent = "Please provide text to classify.";
         errorEl.hidden = false;
         return;
       }
@@ -170,16 +194,57 @@
         if (!response.ok) {
           throw new Error(data.error || "Submission failed.");
         }
-        showResult(data);
+        showResult(data, form.creator_id.value.trim());
         await refreshStats();
         form.text.value = "";
-        form.image.value = "";
       } catch (err) {
         errorEl.textContent = err.message;
         errorEl.hidden = false;
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "Submit for classification";
+      }
+    });
+
+    appealForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!lastSubmission) return;
+
+      appealErrorEl.hidden = true;
+      appealSuccessEl.hidden = true;
+      const creator_reasoning = document.getElementById("appeal-reasoning").value.trim();
+      if (!creator_reasoning) {
+        appealErrorEl.textContent = "Please explain why you are appealing.";
+        appealErrorEl.hidden = false;
+        return;
+      }
+
+      appealBtn.disabled = true;
+      appealBtn.textContent = "Submitting appeal...";
+
+      try {
+        const response = await fetch("/appeal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content_id: lastSubmission.content_id,
+            creator_id: lastSubmission.creator_id,
+            creator_reasoning,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "Appeal failed.");
+        }
+        appealSuccessEl.textContent = "Appeal received. Status is now under review.";
+        appealSuccessEl.hidden = false;
+        appealBtn.textContent = "Appeal submitted";
+        await refreshStats();
+      } catch (err) {
+        appealErrorEl.textContent = err.message;
+        appealErrorEl.hidden = false;
+        appealBtn.disabled = false;
+        appealBtn.textContent = "Submit appeal";
       }
     });
   </script>

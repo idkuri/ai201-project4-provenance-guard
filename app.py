@@ -1,9 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
-from werkzeug.utils import secure_filename
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -25,9 +23,6 @@ from storage.db import (
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
-
-UPLOAD_DIR = Path(__file__).resolve().parent / "storage" / "uploads"
-ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 limiter = Limiter(
     get_remote_address,
@@ -58,39 +53,15 @@ def _build_text_payload(data: dict) -> tuple[str, str]:
     return text, content_type
 
 
-def _save_uploaded_image(image_file) -> str | None:
-    if not image_file or not image_file.filename:
-        return None
-
-    filename = secure_filename(image_file.filename)
-    if not filename:
-        return None
-
-    suffix = Path(filename).suffix.lower()
-    if suffix not in ALLOWED_IMAGE_EXTENSIONS:
-        return None
-
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    stored_name = f"{uuid.uuid4()}{suffix}"
-    image_file.save(UPLOAD_DIR / stored_name)
-    return stored_name
-
-
-def _parse_submit_request() -> tuple[dict, str | None]:
-    if request.form or request.files:
-        creator_id = request.form.get("creator_id", "").strip()
-        text = request.form.get("text", "").strip()
-        image_path = _save_uploaded_image(request.files.get("image"))
-        content_type = "multimodal" if image_path else "text"
-        data = {
-            "creator_id": creator_id,
-            "text": text,
-            "content_type": content_type,
+def _parse_submit_request() -> dict:
+    if request.form:
+        return {
+            "creator_id": request.form.get("creator_id", "").strip(),
+            "text": request.form.get("text", "").strip(),
+            "content_type": "text",
         }
-        return data, image_path
 
-    data = request.get_json(silent=True) or {}
-    return data, None
+    return request.get_json(silent=True) or {}
 
 
 @app.route("/")
@@ -112,19 +83,14 @@ def index():
 @app.route("/submit", methods=["POST"])
 @limiter.limit("10 per minute;100 per day")
 def submit():
-    data, image_path = _parse_submit_request()
+    data = _parse_submit_request()
     text, content_type = _build_text_payload(data)
     creator_id = data.get("creator_id", "").strip()
-    if image_path and text:
-        content_type = "multimodal"
 
     if not creator_id:
         return jsonify({"error": "creator_id is required"}), 400
-    if not text and not image_path:
-        return jsonify({"error": "text or image is required"}), 400
-    if not text and image_path:
-        text = f"Image upload: {image_path}"
-        content_type = "metadata"
+    if not text:
+        return jsonify({"error": "text is required"}), 400
 
     content_id = str(uuid.uuid4())
     llm_score = run_llm_signal(text)
@@ -154,7 +120,6 @@ def submit():
         "status": "classified",
         "content_type": content_type,
         "label": label,
-        "image_path": image_path,
     }
     write_audit_entry(entry)
 
